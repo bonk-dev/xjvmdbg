@@ -4,8 +4,8 @@ use crate::descriptors::{
     self, FieldDescriptor, MethodDescriptor, parse_field_descriptor, parse_method_descriptor,
 };
 use crate::java_class_file::{
-    AttributeInfo, ConstantValueAttributeRaw, FieldAccessFlags, JavaClassFile, MethodAccessFlags,
-    SourceFileAttributeRaw, Version,
+    AttributeInfo, CodeAttributeRaw, CodeExceptionRaw, ConstantValueAttributeRaw, FieldAccessFlags,
+    JavaClassFile, MethodAccessFlags, SourceFileAttributeRaw, Version,
 };
 use std::collections::HashMap;
 use std::io::{Cursor, Read, Seek};
@@ -65,6 +65,42 @@ impl SourceFileAttribute {
 }
 
 #[derive(Debug)]
+pub struct CodeAttribute {
+    pub max_stack: u16,
+    pub max_locals: u16,
+    pub code: Vec<u8>,
+    pub exception_table: Vec<CodeExceptionRaw>,
+    pub attributes: Vec<AttributeType>,
+}
+impl CodeAttribute {
+    fn read<R>(reader: &mut R, raw_class: &JavaClassFile) -> Result<Self, AttributeReadError>
+    where
+        R: Read + Seek,
+    {
+        let raw_r = CodeAttributeRaw::read(reader);
+        if raw_r.is_err() {
+            return Err(AttributeReadError::Deserialization(raw_r.unwrap_err()));
+        }
+
+        let raw = raw_r.unwrap();
+        let mut attributes = Vec::with_capacity(raw.attributes.len());
+        for attr_info in raw.attributes {
+            let attr = JavaClassContainerBuilder::parse_attribute(&attr_info, &raw_class);
+            attributes.push(attr);
+        }
+
+        // TODO: Parse code
+        Ok(CodeAttribute {
+            max_stack: raw.max_stack,
+            max_locals: raw.max_locals,
+            code: raw.code,
+            exception_table: raw.exception_table,
+            attributes: attributes,
+        })
+    }
+}
+
+#[derive(Debug)]
 pub struct ErrorAttribute {
     pub message: String,
     pub data: Vec<u8>,
@@ -72,6 +108,7 @@ pub struct ErrorAttribute {
 
 #[derive(Debug)]
 pub enum AttributeType {
+    Code(CodeAttribute),
     ConstantValue(ConstantAttribute),
     ConstantValueIndex(ConstantValueAttributeRaw),
     Deprecated,
@@ -239,6 +276,7 @@ impl<'a> JavaClassContainerBuilder<'a> {
     ) -> Result<AttributeType, AttributeReadError> {
         let mut cursor = Cursor::new(data);
         match attr_name {
+            "Code" => CodeAttribute::read(&mut cursor, &raw_class).map(AttributeType::Code),
             "ConstantValue" => ConstantValueAttributeRaw::read(&mut cursor)
                 .map(AttributeType::ConstantValueIndex)
                 .map_err(AttributeReadError::Deserialization),

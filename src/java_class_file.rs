@@ -79,6 +79,7 @@ bitflags! {
 }
 
 #[binrw]
+#[derive(Debug)]
 pub struct AttributeInfo {
     pub name_index: u16,
     data_length: u32,
@@ -516,4 +517,34 @@ pub struct ConstantValueAttributeRaw {
 #[brw(big)]
 pub struct SourceFileAttributeRaw {
     pub file_name_cp_index: u16,
+}
+
+#[binrw]
+#[brw(big)]
+#[derive(Debug)]
+pub struct CodeExceptionRaw {
+    start_pc: u16,
+    end_pc: u16,
+    handler_pc: u16,
+    catch_type: u16,
+}
+
+#[binrw]
+#[brw(big)]
+#[derive(Debug)]
+pub struct CodeAttributeRaw {
+    pub max_stack: u16,
+    pub max_locals: u16,
+
+    code_length: u32,
+    #[br(count = code_length)]
+    pub code: Vec<u8>,
+
+    exception_table_length: u16,
+    #[br(count = exception_table_length)]
+    pub exception_table: Vec<CodeExceptionRaw>,
+
+    attributes_length: u16,
+    #[br(count = attributes_length)]
+    pub attributes: Vec<AttributeInfo>,
 }

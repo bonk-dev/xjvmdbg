@@ -89,6 +89,42 @@ fn main() {
 
                 for attr in method.attributes.iter() {
                     match attr {
+                        xjvmdbg::java_class::AttributeType::Code(code) => {
+                            println!("     Code:");
+                            println!("        Max stack: {}", code.max_stack);
+                            println!("        Max locals: {}", code.max_locals);
+                            println!(
+                                "        Code length (disassembly: TODO): {}",
+                                code.code.len()
+                            );
+                            println!(
+                                "        Exception table length: {}",
+                                code.exception_table.len()
+                            );
+
+                            if code.attributes.is_empty() {
+                                println!("        Attributes: none");
+                            } else {
+                                println!("        Attributes:");
+                                for code_attr in code.attributes.iter() {
+                                    match code_attr {
+                                        xjvmdbg::java_class::AttributeType::Error(
+                                            error_attribute,
+                                        ) => {
+                                            println!(
+                                                "        -> [Error]: msg: {}",
+                                                error_attribute.message
+                                            )
+                                        }
+                                        _ => {
+                                            println!(
+                                                "        -> Invalid attribute (not expected on code)"
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
                         xjvmdbg::java_class::AttributeType::Deprecated => {
                             println!("     -> Is deprecated")
                         }
