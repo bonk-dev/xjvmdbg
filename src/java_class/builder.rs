@@ -1,217 +1,14 @@
 use binrw::BinRead;
+use std::{collections::HashMap, io::Cursor, rc::Rc};
 
-use crate::descriptors::{
-    self, FieldDescriptor, MethodDescriptor, parse_field_descriptor, parse_method_descriptor,
+use crate::{
+    descriptors::{ComponentType, Type},
+    java_class::{
+        AttributeType, CodeAttribute, ConstantAttribute, ErrorAttribute, Field, JavaClass, Method,
+        SourceFileAttribute, errors::AttributeReadError, errors::ConstantValueReadError,
+    },
+    java_class_file::{AttributeInfo, ConstantValueAttributeRaw, JavaClassFile},
 };
-use crate::java_class_file::{
-    AttributeInfo, CodeAttributeRaw, CodeExceptionRaw, ConstantValueAttributeRaw, FieldAccessFlags,
-    JavaClassFile, MethodAccessFlags, SourceFileAttributeRaw, Version,
-};
-use std::collections::HashMap;
-use std::io::{Cursor, Read, Seek};
-use std::rc::Rc;
-
-#[derive(Debug)]
-pub enum ConstantAttribute {
-    Int(i32),
-    Short(i16),
-    Char(char),
-    Byte(u8),
-    Boolean(bool),
-    Float(f32),
-    Long(i64),
-    Double(f64),
-    String(String),
-}
-impl ToString for ConstantAttribute {
-    fn to_string(&self) -> String {
-        match self {
-            ConstantAttribute::Int(int) => int.to_string(),
-            ConstantAttribute::Short(short) => short.to_string(),
-            ConstantAttribute::Char(char) => char.to_string(),
-            ConstantAttribute::Byte(byte) => byte.to_string(),
-            ConstantAttribute::Boolean(bool) => bool.to_string(),
-            ConstantAttribute::Float(float) => float.to_string(),
-            ConstantAttribute::Long(long) => long.to_string(),
-            ConstantAttribute::Double(double) => double.to_string(),
-            ConstantAttribute::String(string) => format!("\"{}\"", string),
-        }
-    }
-}
-
-#[derive(Debug)]
-pub struct SourceFileAttribute {
-    pub file_name: String,
-}
-impl SourceFileAttribute {
-    fn read<T: Read + Seek>(
-        reader: &mut T,
-        raw_class: &JavaClassFile,
-    ) -> Result<Self, binrw::Error> {
-        let raw_r = SourceFileAttributeRaw::read(reader);
-        match raw_r {
-            Ok(raw) => {
-                let file_name = raw_class
-                    .constant_pool
-                    .find_utf8(raw.file_name_cp_index)
-                    .unwrap();
-                Result::Ok(SourceFileAttribute {
-                    file_name: String::from(file_name),
-                })
-            }
-            Err(err) => Result::Err(err),
-        }
-    }
-}
-
-#[derive(Debug)]
-pub struct CodeAttribute {
-    pub max_stack: u16,
-    pub max_locals: u16,
-    pub code: Vec<u8>,
-    pub exception_table: Vec<CodeExceptionRaw>,
-    pub attributes: Vec<AttributeType>,
-}
-impl CodeAttribute {
-    fn read<R>(reader: &mut R, raw_class: &JavaClassFile) -> Result<Self, AttributeReadError>
-    where
-        R: Read + Seek,
-    {
-        let raw_r = CodeAttributeRaw::read(reader);
-        if raw_r.is_err() {
-            return Err(AttributeReadError::Deserialization(raw_r.unwrap_err()));
-        }
-
-        let raw = raw_r.unwrap();
-        let mut attributes = Vec::with_capacity(raw.attributes.len());
-        for attr_info in raw.attributes {
-            let attr = JavaClassContainerBuilder::parse_attribute(&attr_info, &raw_class);
-            attributes.push(attr);
-        }
-
-        // TODO: Parse code
-        Ok(CodeAttribute {
-            max_stack: raw.max_stack,
-            max_locals: raw.max_locals,
-            code: raw.code,
-            exception_table: raw.exception_table,
-            attributes: attributes,
-        })
-    }
-}
-
-#[derive(Debug)]
-pub struct ErrorAttribute {
-    pub message: String,
-    pub data: Vec<u8>,
-}
-
-#[derive(Debug)]
-pub enum AttributeType {
-    Code(CodeAttribute),
-    ConstantValue(ConstantAttribute),
-    ConstantValueIndex(ConstantValueAttributeRaw),
-    Deprecated,
-    SourceFile(SourceFileAttribute),
-    Error(ErrorAttribute),
-}
-
-#[derive(Debug)]
-pub struct Field {
-    pub access_flags: FieldAccessFlags,
-    pub name: String,
-    pub descriptor: FieldDescriptor,
-    pub attributes: Vec<AttributeType>,
-}
-impl Field {
-    pub fn new(access_flags: FieldAccessFlags, name: &str, descriptor: FieldDescriptor) -> Self {
-        Field {
-            access_flags,
-            name: String::from(name),
-            descriptor: descriptor,
-            attributes: vec![],
-        }
-    }
-}
-
-pub struct Method {
-    pub access_flags: MethodAccessFlags,
-    pub name: String,
-    pub descriptor: MethodDescriptor,
-    pub attributes: Vec<AttributeType>,
-}
-impl Method {
-    pub fn new(access_flags: MethodAccessFlags, name: &str, descriptor: MethodDescriptor) -> Self {
-        Method {
-            access_flags,
-            name: String::from(name),
-            descriptor: descriptor,
-            attributes: vec![],
-        }
-    }
-}
-
-pub struct JavaClass {
-    pub version: Version,
-    pub name: String,
-    pub super_class: Option<Rc<JavaClass>>,
-    pub interfaces: Vec<Rc<JavaClass>>,
-    pub fields: Vec<Field>,
-    pub methods: Vec<Method>,
-    pub attributes: Vec<AttributeType>,
-}
-impl JavaClass {
-    pub fn new(version: Version, name: String) -> Self {
-        JavaClass {
-            version,
-            name,
-            super_class: None,
-            interfaces: vec![],
-            fields: vec![],
-            methods: vec![],
-            attributes: vec![],
-        }
-    }
-
-    /// Creates a JavaClass from only the 'name' (used for unresolved classes).
-    ///
-    /// # Arguments
-    ///
-    /// * `name` - Name of the class
-    pub fn from_name(name: &str) -> JavaClass {
-        JavaClass {
-            version: Version::default(),
-            name: String::from(name),
-            super_class: None,
-            interfaces: vec![],
-            fields: vec![],
-            methods: vec![],
-            attributes: vec![],
-        }
-    }
-}
-
-enum AttributeReadError {
-    Deserialization(binrw::Error),
-    NotSuported,
-}
-impl ToString for AttributeReadError {
-    fn to_string(&self) -> String {
-        match self {
-            AttributeReadError::Deserialization(error) => {
-                format!("Deserialization error: {}", error.to_string())
-            }
-            AttributeReadError::NotSuported => String::from("Not supported"),
-        }
-    }
-}
-
-#[derive(Debug)]
-enum ConstantValueReadError {
-    ReferenceTypeNotString,
-    NotFoundInPool,
-    VoidField,
-}
 
 pub struct JavaClassContainerBuilder<'a> {
     raw_classes: &'a Vec<JavaClassFile>,
@@ -288,7 +85,10 @@ impl<'a> JavaClassContainerBuilder<'a> {
         }
     }
 
-    fn parse_attribute(attribute_info: &AttributeInfo, raw_class: &JavaClassFile) -> AttributeType {
+    pub(crate) fn parse_attribute(
+        attribute_info: &AttributeInfo,
+        raw_class: &JavaClassFile,
+    ) -> AttributeType {
         let name = raw_class
             .constant_pool
             .find_utf8(attribute_info.name_index)
@@ -320,66 +120,66 @@ impl<'a> JavaClassContainerBuilder<'a> {
         raw_class: &JavaClassFile,
     ) -> Result<ConstantAttribute, ConstantValueReadError> {
         match &field.descriptor.element_type {
-            descriptors::ComponentType::Base(field_type) => match field_type {
-                descriptors::Type::SignedByte => {
+            ComponentType::Base(field_type) => match field_type {
+                Type::SignedByte => {
                     let byte = raw_class
                         .constant_pool
                         .find_byte(idx)
                         .ok_or(ConstantValueReadError::NotFoundInPool)?;
                     Ok(ConstantAttribute::Byte(byte))
                 }
-                descriptors::Type::Char => {
+                Type::Char => {
                     let char = raw_class
                         .constant_pool
                         .find_char(idx)
                         .ok_or(ConstantValueReadError::NotFoundInPool)?;
                     Ok(ConstantAttribute::Char(char))
                 }
-                descriptors::Type::Double => {
+                Type::Double => {
                     let d = raw_class
                         .constant_pool
                         .find_double(idx)
                         .ok_or(ConstantValueReadError::NotFoundInPool)?;
                     Ok(ConstantAttribute::Double(d))
                 }
-                descriptors::Type::Float => {
+                Type::Float => {
                     let f = raw_class
                         .constant_pool
                         .find_float(idx)
                         .ok_or(ConstantValueReadError::NotFoundInPool)?;
                     Ok(ConstantAttribute::Float(f))
                 }
-                descriptors::Type::Integer => {
+                Type::Integer => {
                     let i = raw_class
                         .constant_pool
                         .find_int(idx)
                         .ok_or(ConstantValueReadError::NotFoundInPool)?;
                     Ok(ConstantAttribute::Int(i))
                 }
-                descriptors::Type::Long => {
+                Type::Long => {
                     let l = raw_class
                         .constant_pool
                         .find_long(idx)
                         .ok_or(ConstantValueReadError::NotFoundInPool)?;
                     Ok(ConstantAttribute::Long(l))
                 }
-                descriptors::Type::Short => {
+                Type::Short => {
                     let s = raw_class
                         .constant_pool
                         .find_short(idx)
                         .ok_or(ConstantValueReadError::NotFoundInPool)?;
                     Ok(ConstantAttribute::Short(s))
                 }
-                descriptors::Type::Boolean => {
+                Type::Boolean => {
                     let b = raw_class
                         .constant_pool
                         .find_bool(idx)
                         .ok_or(ConstantValueReadError::NotFoundInPool)?;
                     Ok(ConstantAttribute::Boolean(b))
                 }
-                descriptors::Type::Void => Err(ConstantValueReadError::VoidField),
+                Type::Void => Err(ConstantValueReadError::VoidField),
             },
-            descriptors::ComponentType::Object { class_name } => {
+            ComponentType::Object { class_name } => {
                 if class_name == "java/lang/String" {
                     let s = raw_class
                         .constant_pool
@@ -405,7 +205,7 @@ impl<'a> JavaClassContainerBuilder<'a> {
                 .unwrap();
             println!("Field: {} (d: {})", name, descriptor_raw_string);
 
-            let descriptor = parse_field_descriptor(descriptor_raw_string);
+            let descriptor = crate::descriptors::parse_field_descriptor(descriptor_raw_string);
             if descriptor.is_err() {
                 println!(
                     "Could not parse field descriptor: {:?}",
@@ -458,7 +258,7 @@ impl<'a> JavaClassContainerBuilder<'a> {
                 .unwrap();
             println!("Method: {} (d: {})", name, descriptor_raw);
 
-            let descriptor = parse_method_descriptor(descriptor_raw);
+            let descriptor = crate::descriptors::parse_method_descriptor(descriptor_raw);
             if descriptor.is_err() {
                 println!(
                     "Could not parse method descriptor: {:?}",
