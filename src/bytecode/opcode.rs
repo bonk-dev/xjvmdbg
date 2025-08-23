@@ -1,5 +1,5 @@
 #[repr(u8)]
-enum Opcode {
+pub(crate) enum Opcode {
     Aaload = 0x32,
     Aastore = 0x53,
     AconstNull = 0x01,
@@ -108,13 +108,13 @@ enum Opcode {
     IfAcmpne = 0xa6,
     IfIcmpeq = 0x9f,
     IfIcmpne = 0xa0,
-    IfIcmpit = 0xa1,
+    IfIcmplt = 0xa1,
     IfIcmpge = 0xa2,
     IfIcmpgt = 0xa3,
     IfIcmple = 0xa4,
     Ifeq = 0x99,
     Ifne = 0x9a,
-    Ifit = 0x9b,
+    Iflt = 0x9b,
     Ifge = 0x9c,
     Ifgt = 0x9d,
     Ifle = 0x9e,
@@ -205,7 +205,7 @@ enum Opcode {
 }
 
 #[derive(Debug)]
-struct InvalidOpcode {
+pub struct InvalidOpcode {
     pub opcode: u8,
 }
 
@@ -322,13 +322,13 @@ impl TryFrom<u8> for Opcode {
             0xa6 => Ok(Opcode::IfAcmpne),
             0x9f => Ok(Opcode::IfIcmpeq),
             0xa0 => Ok(Opcode::IfIcmpne),
-            0xa1 => Ok(Opcode::IfIcmpit),
+            0xa1 => Ok(Opcode::IfIcmplt),
             0xa2 => Ok(Opcode::IfIcmpge),
             0xa3 => Ok(Opcode::IfIcmpgt),
             0xa4 => Ok(Opcode::IfIcmple),
             0x99 => Ok(Opcode::Ifeq),
             0x9a => Ok(Opcode::Ifne),
-            0x9b => Ok(Opcode::Ifit),
+            0x9b => Ok(Opcode::Iflt),
             0x9c => Ok(Opcode::Ifge),
             0x9d => Ok(Opcode::Ifgt),
             0x9e => Ok(Opcode::Ifle),
