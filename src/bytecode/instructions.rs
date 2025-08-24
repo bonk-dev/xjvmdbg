@@ -741,3 +741,345 @@ impl BinRead for Instruction {
 // fn parse_instruction<R: Read + Seek>(r: &mut R) {
 //     let mut buffer = [0u8; 1];
 // }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Cursor;
+
+    #[test]
+    fn test_table_switch_no_padding() {
+        // Position 3 (after opcode), no padding needed (3+1 = 4, divisible by 4)
+        let data = vec![
+            0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0x10, // default = 16
+            0x00, 0x00, 0x00, 0x01, // low = 1
+            0x00, 0x00, 0x00, 0x03, // high = 3
+            0x00, 0x00, 0x00, 0x20, // offset[0] = 32
+            0x00, 0x00, 0x00, 0x30, // offset[1] = 48
+            0x00, 0x00, 0x00, 0x40, // offset[2] = 64
+        ];
+
+        let mut cursor = Cursor::new(data);
+        cursor.set_position(3); // Simulate position after reading opcode
+
+        let result = read_table_switch(&mut cursor).unwrap();
+
+        if let Instruction::Tableswitch {
+            default,
+            low,
+            high,
+            offsets,
+        } = result
+        {
+            assert_eq!(default, 16);
+            assert_eq!(low, 1);
+            assert_eq!(high, 3);
+            assert_eq!(offsets, vec![32, 48, 64]);
+        } else {
+            panic!("Expected Tableswitch instruction");
+        }
+    }
+
+    #[test]
+    fn test_table_switch_with_1_padding() {
+        // Position 2 (after opcode), needs 1 padding byte (2+1 = 3, need 1 byte to reach 4)
+        let data = vec![
+            0xFF, 0xFF, 0x00, // padding
+            0x00, 0x00, 0x00, 0x10, // default = 16
+            0x00, 0x00, 0x00, 0x02, // low = 2
+            0x00, 0x00, 0x00, 0x02, // high = 2 (single case)
+            0x00, 0x00, 0x00, 0x25, // offset[0] = 37
+        ];
+
+        let mut cursor = Cursor::new(data);
+        cursor.set_position(2); // Simulate position after reading opcode
+
+        let result = read_table_switch(&mut cursor).unwrap();
+
+        if let Instruction::Tableswitch {
+            default,
+            low,
+            high,
+            offsets,
+        } = result
+        {
+            assert_eq!(default, 16);
+            assert_eq!(low, 2);
+            assert_eq!(high, 2);
+            assert_eq!(offsets, vec![37]);
+        } else {
+            panic!("Expected Tableswitch instruction");
+        }
+    }
+
+    #[test]
+    fn test_table_switch_with_2_padding() {
+        // Position 1 (after opcode), needs 2 padding bytes (1+1 = 2, need 2 bytes to reach 4)
+        let data = vec![
+            0xFF, 0x00, 0x00, // padding
+            0x00, 0x00, 0x00, 0x05, // default = 5
+            0xFF, 0xFF, 0xFF, 0xFF, // low = -1
+            0x00, 0x00, 0x00, 0x01, // high = 1
+            0x00, 0x00, 0x00, 0x10, // offset[0] = 16 (for -1)
+            0x00, 0x00, 0x00, 0x20, // offset[1] = 32 (for 0)
+            0x00, 0x00, 0x00, 0x30, // offset[2] = 48 (for 1)
+        ];
+
+        let mut cursor = Cursor::new(data);
+        cursor.set_position(1); // Simulate position after reading opcode
+
+        let result = read_table_switch(&mut cursor).unwrap();
+
+        if let Instruction::Tableswitch {
+            default,
+            low,
+            high,
+            offsets,
+        } = result
+        {
+            assert_eq!(default, 5);
+            assert_eq!(low, -1);
+            assert_eq!(high, 1);
+            assert_eq!(offsets, vec![16, 32, 48]);
+        } else {
+            panic!("Expected Tableswitch instruction");
+        }
+    }
+
+    #[test]
+    fn test_table_switch_with_3_padding() {
+        // Position 0 (after opcode), needs 3 padding bytes (0+1 = 1, need 3 bytes to reach 4)
+        let data = vec![
+            0x00, 0x00, 0x00, // padding
+            0x00, 0x00, 0x00, 0x00, // default = 0
+            0x00, 0x00, 0x00, 0x05, // low = 5
+            0x00, 0x00, 0x00, 0x07, // high = 7
+            0x00, 0x00, 0x00, 0x15, // offset[0] = 21 (for 5)
+            0x00, 0x00, 0x00, 0x25, // offset[1] = 37 (for 6)
+            0x00, 0x00, 0x00, 0x35, // offset[2] = 53 (for 7)
+        ];
+
+        let mut cursor = Cursor::new(data);
+        cursor.set_position(0); // Simulate position after reading opcode
+
+        let result = read_table_switch(&mut cursor).unwrap();
+
+        if let Instruction::Tableswitch {
+            default,
+            low,
+            high,
+            offsets,
+        } = result
+        {
+            assert_eq!(default, 0);
+            assert_eq!(low, 5);
+            assert_eq!(high, 7);
+            assert_eq!(offsets, vec![21, 37, 53]);
+        } else {
+            panic!("Expected Tableswitch instruction");
+        }
+    }
+
+    #[test]
+    fn test_table_switch_empty_range() {
+        // Test edge case where high < low (should result in negative count)
+        // This might be invalid bytecode, but we should handle it gracefully
+        let data = vec![
+            0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0x10, // default = 16
+            0x00, 0x00, 0x00, 0x05, // low = 5
+            0x00, 0x00, 0x00, 0x03, // high = 3 (< low)
+        ];
+
+        let mut cursor = Cursor::new(data);
+        cursor.set_position(3); // No padding needed
+
+        let result = read_table_switch(&mut cursor).unwrap();
+
+        if let Instruction::Tableswitch {
+            default,
+            low,
+            high,
+            offsets,
+        } = result
+        {
+            assert_eq!(default, 16);
+            assert_eq!(low, 5);
+            assert_eq!(high, 3);
+            assert_eq!(offsets, vec![]); // Should be empty since count would be negative
+        } else {
+            panic!("Expected Tableswitch instruction");
+        }
+    }
+
+    #[test]
+    fn test_lookup_switch_no_padding() {
+        // Position 3 (after opcode), no padding needed
+        let data = vec![
+            0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0x10, // default = 16
+            0x00, 0x00, 0x00, 0x03, // npairs = 3
+            // Pair 1: match=5, offset=20
+            0x00, 0x00, 0x00, 0x05, 0x00, 0x00, 0x00, 0x14,
+            // Pair 2: match=10, offset=30
+            0x00, 0x00, 0x00, 0x0A, 0x00, 0x00, 0x00, 0x1E,
+            // Pair 3: match=15, offset=40
+            0x00, 0x00, 0x00, 0x0F, 0x00, 0x00, 0x00, 0x28,
+        ];
+
+        let mut cursor = Cursor::new(data);
+        cursor.set_position(3); // No padding needed
+
+        let result = read_lookup_switch(&mut cursor).unwrap();
+
+        if let Instruction::Lookupswitch {
+            default_offset,
+            matches,
+        } = result
+        {
+            assert_eq!(default_offset, 16);
+            assert_eq!(matches.len(), 3);
+            assert_eq!(matches.get(&5), Some(&20));
+            assert_eq!(matches.get(&10), Some(&30));
+            assert_eq!(matches.get(&15), Some(&40));
+        } else {
+            panic!("Expected Lookupswitch instruction");
+        }
+    }
+
+    #[test]
+    fn test_lookup_switch_with_padding() {
+        // Position 1 (after opcode), needs 2 padding bytes
+        let data = vec![
+            0xFF, 0x00, 0x00, // padding
+            0xFF, 0xFF, 0xFF, 0xF0, // default = -16
+            0x00, 0x00, 0x00, 0x02, // npairs = 2
+            // Pair 1: match=-5, offset=100
+            0xFF, 0xFF, 0xFF, 0xFB, 0x00, 0x00, 0x00, 0x64,
+            // Pair 2: match=1000, offset=-50
+            0x00, 0x00, 0x03, 0xE8, 0xFF, 0xFF, 0xFF, 0xCE,
+        ];
+
+        let mut cursor = Cursor::new(data);
+        cursor.set_position(1); // Needs 2 bytes padding
+
+        let result = read_lookup_switch(&mut cursor).unwrap();
+
+        if let Instruction::Lookupswitch {
+            default_offset,
+            matches,
+        } = result
+        {
+            assert_eq!(default_offset, -16);
+            assert_eq!(matches.len(), 2);
+            assert_eq!(matches.get(&-5), Some(&100));
+            assert_eq!(matches.get(&1000), Some(&-50));
+        } else {
+            panic!("Expected Lookupswitch instruction");
+        }
+    }
+
+    #[test]
+    fn test_lookup_switch_zero_pairs() {
+        // Test with 0 pairs
+        let data = vec![
+            0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0x08, // default = 8
+            0x00, 0x00, 0x00, 0x00, // npairs = 0
+        ];
+
+        let mut cursor = Cursor::new(data);
+        cursor.set_position(3); // No padding needed
+
+        let result = read_lookup_switch(&mut cursor).unwrap();
+
+        if let Instruction::Lookupswitch {
+            default_offset,
+            matches,
+        } = result
+        {
+            assert_eq!(default_offset, 8);
+            assert_eq!(matches.len(), 0);
+            assert!(matches.is_empty());
+        } else {
+            panic!("Expected Lookupswitch instruction");
+        }
+    }
+
+    #[test]
+    fn test_lookup_switch_duplicate_keys() {
+        // Test that duplicate keys overwrite (HashMap behavior)
+        // Note: This would be invalid bytecode, but we should handle it
+        let data = vec![
+            0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00,
+            0x00, // some data to skip padding + default = 0
+            0x00, 0x00, 0x00, 0x02, // npairs = 2
+            // Pair 1: match=5, offset=20
+            0x00, 0x00, 0x00, 0x05, 0x00, 0x00, 0x00, 0x14,
+            // Pair 2: match=5, offset=30 (duplicate key)
+            0x00, 0x00, 0x00, 0x05, 0x00, 0x00, 0x00, 0x1E,
+        ];
+
+        let mut cursor = Cursor::new(data);
+        cursor.set_position(3); // No padding needed
+
+        let result = read_lookup_switch(&mut cursor).unwrap();
+
+        if let Instruction::Lookupswitch {
+            default_offset,
+            matches,
+        } = result
+        {
+            assert_eq!(default_offset, 0);
+            assert_eq!(matches.len(), 1); // Only one entry due to duplicate
+            assert_eq!(matches.get(&5), Some(&30)); // Last value wins
+        } else {
+            panic!("Expected Lookupswitch instruction");
+        }
+    }
+
+    #[test]
+    fn test_table_switch_insufficient_data() {
+        // Test with insufficient data (should fail)
+        let data = vec![
+            0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0x10, // default = 16
+            0x00, 0x00, 0x00, 0x01, // low = 1
+            0x00, 0x00, 0x00, 0x03, // high = 3 (expects 3 offsets)
+            0x00, 0x00, 0x00,
+            0x20, // offset[0] = 32
+                  // Missing offset[1] and offset[2]
+        ];
+
+        let mut cursor = Cursor::new(data);
+        cursor.set_position(3);
+
+        let result = read_table_switch(&mut cursor);
+        assert!(result.is_err(), "Should fail with insufficient data");
+    }
+
+    #[test]
+    fn test_lookup_switch_insufficient_data() {
+        // Test with insufficient data for pairs
+        let data = vec![
+            0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00, // default = 0
+            0x00, 0x00, 0x00, 0x02, // npairs = 2
+            0x00, 0x00, 0x00,
+            0x05, // match = 5
+                  // Missing offset for first pair and entire second pair
+        ];
+
+        let mut cursor = Cursor::new(data);
+        cursor.set_position(3);
+
+        let result = read_lookup_switch(&mut cursor);
+        assert!(result.is_err(), "Should fail with insufficient data");
+    }
+
+    // Helper test to verify padding calculation
+    #[test]
+    fn test_padding_calculation() {
+        // Test the padding formula: (4 - ((pos + 1) % 4)) % 4
+        assert_eq!((4 - ((0 + 1) % 4)) % 4, 3); // pos=0 -> 3 padding bytes
+        assert_eq!((4 - ((1 + 1) % 4)) % 4, 2); // pos=1 -> 2 padding bytes
+        assert_eq!((4 - ((2 + 1) % 4)) % 4, 1); // pos=2 -> 1 padding byte
+        assert_eq!((4 - ((3 + 1) % 4)) % 4, 0); // pos=3 -> 0 padding bytes
+        assert_eq!((4 - ((4 + 1) % 4)) % 4, 3); // pos=4 -> 3 padding bytes (cycle repeats)
+    }
+}
