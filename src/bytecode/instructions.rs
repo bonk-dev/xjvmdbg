@@ -388,7 +388,11 @@ fn read_table_switch<R: Read + Seek>(reader: &mut R) -> binrw::BinResult<Instruc
     let low = i32::read_be(reader)?;
     let high = i32::read_be(reader)?;
 
-    let count = high - low + 1;
+    let mut count = high - low + 1;
+    if count < 0 {
+        count = 0;
+    }
+
     let mut offsets = Vec::with_capacity(count as usize);
     for _i in 0..count {
         offsets.push(i32::read_be(reader)?);
