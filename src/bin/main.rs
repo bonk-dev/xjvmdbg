@@ -1,6 +1,7 @@
 use binrw::BinRead;
 use std::fs;
-use std::io::{Cursor, Read};
+use std::io::{Cursor, Read, Seek};
+use xjvmdbg::bytecode::Instruction;
 use xjvmdbg::java_class::JavaClassContainerBuilder;
 use xjvmdbg::java_class_file::JavaClassFile;
 
@@ -93,10 +94,7 @@ fn main() {
                             println!("     Code:");
                             println!("        Max stack: {}", code.max_stack);
                             println!("        Max locals: {}", code.max_locals);
-                            println!(
-                                "        Code length (disassembly: TODO): {}",
-                                code.code.len()
-                            );
+                            println!("        Code length: {} bytes", code.code.len());
                             println!(
                                 "        Exception table length: {}",
                                 code.exception_table.len()
@@ -122,6 +120,19 @@ fn main() {
                                             )
                                         }
                                     }
+                                }
+                            }
+
+                            println!("        Disassembly:");
+                            let mut cursor = Cursor::new(&code.code);
+                            match xjvmdbg::bytecode::parse_instructions(&mut cursor) {
+                                Ok(instructions) => {
+                                    for i in instructions {
+                                        println!("          {:?}", i);
+                                    }
+                                }
+                                Err(e) => {
+                                    println!("          Could not read instructions: {}", e);
                                 }
                             }
                         }
