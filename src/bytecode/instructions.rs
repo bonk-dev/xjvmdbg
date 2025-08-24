@@ -1,12 +1,12 @@
 use std::{
-    collections::{HashMap, hash_map},
+    collections::HashMap,
     io::{Read, Seek, SeekFrom},
 };
 
 use crate::bytecode::opcode::Opcode;
 use binrw::BinRead;
 
-enum Instruction {
+pub enum Instruction {
     Aaload,
     Aastore,
     AconstNull,
@@ -282,7 +282,7 @@ enum Instruction {
     Wide(Box<WideInstruction>),
 }
 
-enum WideInstruction {
+pub enum WideInstruction {
     Iload { index: u16 },
     Fload { index: u16 },
     Aload { index: u16 },
