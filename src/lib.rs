@@ -1,3 +1,4 @@
+mod binary;
 pub mod bytecode;
 pub mod descriptors;
 pub mod java_class;

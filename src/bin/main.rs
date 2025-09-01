@@ -1,8 +1,7 @@
 use binrw::BinRead;
 use std::fs;
-use std::io::{Cursor, Read, Seek};
+use std::io::{Cursor, Read};
 use std::net::TcpStream;
-use xjvmdbg::bytecode::Instruction;
 use xjvmdbg::java_class::JavaClassContainerBuilder;
 use xjvmdbg::java_class_file::JavaClassFile;
 use xjvmdbg::jdwp::JdwpClient;
@@ -155,10 +154,13 @@ fn main() {
         }
     }
 
-    let mut stream = TcpStream::connect("127.0.0.1:47239");
+    let stream = TcpStream::connect("127.0.0.1:47239");
     let mut client = JdwpClient::from(stream.unwrap());
     match client.do_handshake() {
         Ok(_) => println!("Success"),
-        Err(e) => println!("Handshake failed"),
+        Err(e) => panic!("Handshake failed: {:?}", e),
     }
+
+    let id_sizes = client.vm_get_id_sizes();
+    println!("{:?}", id_sizes);
 }
