@@ -1,8 +1,6 @@
 use std::{
     collections::HashMap,
-    fmt::format,
-    io::{Read, Seek, SeekFrom, Stderr},
-    string,
+    io::{Read, Seek, SeekFrom},
 };
 
 use crate::bytecode::opcode::Opcode;
