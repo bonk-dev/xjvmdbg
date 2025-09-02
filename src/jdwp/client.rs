@@ -1,7 +1,9 @@
 use binrw::{BinRead, BinWrite, meta::ReadEndian};
 use std::io::{self, Cursor, Read, Write};
 
-use crate::jdwp::{Command, CommandPacketHeader, IdSizesReply, ReplyPacketHeader, VersionReply};
+use crate::jdwp::{
+    Command, CommandPacketHeader, IdSizesReply, ReplyPacketHeader, VersionReply, result,
+};
 
 pub struct JdwpClient<T: Read + Write> {
     packet_id: u32,
@@ -16,7 +18,7 @@ impl<T: Read + Write> JdwpClient<T> {
         }
     }
 
-    pub fn do_handshake(&mut self) -> io::Result<()> {
+    pub fn do_handshake(&mut self) -> result::Result<()> {
         const HANDSHAKE_STR: &str = "JDWP-Handshake";
 
         let handshake_bytes = HANDSHAKE_STR.as_bytes();
@@ -30,19 +32,18 @@ impl<T: Read + Write> JdwpClient<T> {
             .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "Invalid UTF-8"))?;
 
         if received != HANDSHAKE_STR {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                format!(
+            return Err(result::Error::ParsingError {
+                message: format!(
                     "Invalid handshake: expected '{}', got '{}'",
                     HANDSHAKE_STR, received
                 ),
-            ));
+            });
         }
 
         Ok(())
     }
 
-    fn send_command_header(&mut self, command: Command, data_length: u32) -> io::Result<()> {
+    fn send_command_header(&mut self, command: Command, data_length: u32) -> result::Result<()> {
         let header = CommandPacketHeader {
             length: CommandPacketHeader::get_length() as u32 + data_length,
             id: self.packet_id,
@@ -52,10 +53,11 @@ impl<T: Read + Write> JdwpClient<T> {
         let mut buffer = Vec::with_capacity(CommandPacketHeader::get_length());
         let mut cursor = Cursor::new(&mut buffer);
         header.write_be(&mut cursor).unwrap();
-        self.stream.write_all(&buffer)
+        self.stream.write_all(&buffer)?;
+        Ok(())
     }
 
-    fn read_reply_header(&mut self) -> io::Result<ReplyPacketHeader> {
+    fn read_reply_header(&mut self) -> result::Result<ReplyPacketHeader> {
         let mut recv_buffer = vec![0u8; ReplyPacketHeader::get_length()];
         self.stream.read_exact(&mut recv_buffer).unwrap();
         let mut recv_cursor = Cursor::new(&mut recv_buffer);
@@ -64,7 +66,10 @@ impl<T: Read + Write> JdwpClient<T> {
         Ok(reply_header)
     }
 
-    fn send_bodyless<TReply: BinRead + ReadEndian>(&mut self, cmd: Command) -> io::Result<TReply>
+    fn send_bodyless<TReply: BinRead + ReadEndian>(
+        &mut self,
+        cmd: Command,
+    ) -> result::Result<TReply>
     where
         for<'a> <TReply as BinRead>::Args<'a>: Default,
     {
@@ -79,11 +84,11 @@ impl<T: Read + Write> JdwpClient<T> {
         Ok(reply)
     }
 
-    pub fn vm_get_version(&mut self) -> io::Result<VersionReply> {
+    pub fn vm_get_version(&mut self) -> result::Result<VersionReply> {
         self.send_bodyless(Command::VirtualMachineVersion)
     }
 
-    pub fn vm_get_id_sizes(&mut self) -> io::Result<IdSizesReply> {
+    pub fn vm_get_id_sizes(&mut self) -> result::Result<IdSizesReply> {
         self.send_bodyless(Command::VirtualMachineIDSizes)
     }
 }
