@@ -1,6 +1,6 @@
 use binrw::binrw;
 
-use crate::binrw_enum;
+use crate::{binrw_enum, jdwp::JdwpString};
 
 binrw_enum! {
     #[repr(u16)]
@@ -40,6 +40,17 @@ impl ReplyPacketHeader {
     pub fn is_success(&self) -> bool {
         return self.error_code == 0;
     }
+}
+
+#[binrw]
+#[brw(big)]
+#[derive(Debug)]
+pub struct VersionReply {
+    description: JdwpString,
+    jdwp_major: i32,
+    jdwp_minor: i32,
+    vm_version: JdwpString,
+    vm_name: JdwpString,
 }
 
 #[binrw]

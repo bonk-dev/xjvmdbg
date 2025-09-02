@@ -163,4 +163,7 @@ fn main() {
 
     let id_sizes = client.vm_get_id_sizes();
     println!("{:?}", id_sizes);
+
+    let version = client.vm_get_version();
+    println!("Version: {:?}", version);
 }
