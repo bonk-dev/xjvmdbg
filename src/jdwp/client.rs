@@ -1,4 +1,4 @@
-use binrw::{BinRead, BinWrite};
+use binrw::{BinRead, BinWrite, meta::ReadEndian};
 use std::io::{self, Cursor, Read, Write};
 
 use crate::jdwp::{Command, CommandPacketHeader, IdSizesReply, ReplyPacketHeader, VersionReply};
@@ -64,40 +64,26 @@ impl<T: Read + Write> JdwpClient<T> {
         Ok(reply_header)
     }
 
-    pub fn vm_get_version(&mut self) -> io::Result<VersionReply> {
-        self.send_command_header(Command::VirtualMachineVersion, 0)?;
+    fn send_bodyless<TReply: BinRead + ReadEndian>(&mut self, cmd: Command) -> io::Result<TReply>
+    where
+        for<'a> <TReply as BinRead>::Args<'a>: Default,
+    {
+        self.send_command_header(cmd, 0)?;
         let reply_header = self.read_reply_header()?;
 
         let mut buffer = vec![0u8; reply_header.length as usize - ReplyPacketHeader::get_length()];
         self.stream.read_exact(&mut buffer)?;
         let mut cursor = Cursor::new(&mut buffer);
-        let version =
-            VersionReply::read(&mut cursor).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
-        return Ok(version);
+        let reply =
+            TReply::read(&mut cursor).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+        Ok(reply)
+    }
+
+    pub fn vm_get_version(&mut self) -> io::Result<VersionReply> {
+        self.send_bodyless(Command::VirtualMachineVersion)
     }
 
     pub fn vm_get_id_sizes(&mut self) -> io::Result<IdSizesReply> {
-        self.send_command_header(Command::VirtualMachineIDSizes, 0)?;
-        let reply_header = self.read_reply_header()?;
-
-        let mut buffer = vec![0u8; reply_header.length as usize - ReplyPacketHeader::get_length()];
-        self.stream.read_exact(&mut buffer)?;
-        let mut cursor = Cursor::new(&mut buffer);
-        let id_sizes =
-            IdSizesReply::read(&mut cursor).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
-        return Ok(id_sizes);
-    }
-
-    pub fn vm_get_jdwp_version(&mut self) {
-        self.send_command_header(Command::VirtualMachineVersion, 0)
-            .unwrap();
-
-        let reply_header = self.read_reply_header().unwrap();
-
-        let mut data_buffer =
-            vec![0u8; reply_header.length as usize - ReplyPacketHeader::get_length()];
-        self.stream.read_exact(&mut data_buffer).unwrap();
-
-        println!("{:?}", data_buffer);
+        self.send_bodyless(Command::VirtualMachineIDSizes)
     }
 }
