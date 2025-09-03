@@ -34,6 +34,14 @@ pub struct ReplyPacketHeader {
     pub error_code: u16,
 }
 impl ReplyPacketHeader {
+    pub fn default() -> Self {
+        ReplyPacketHeader {
+            length: 0,
+            id: 0xFFFFFFFF,
+            flags: 0,
+            error_code: 0,
+        }
+    }
     pub fn get_length() -> usize {
         return 4 + 4 + 1 + 2;
     }
