@@ -1,12 +1,13 @@
 use binrw::BinRead;
 use std::fs;
 use std::io::{Cursor, Read};
-use std::net::TcpStream;
+use tokio::net::TcpStream;
 use xjvmdbg::java_class::JavaClassContainerBuilder;
 use xjvmdbg::java_class_file::JavaClassFile;
 use xjvmdbg::jdwp::JdwpClient;
 
-fn main() {
+#[tokio::main]
+async fn main() {
     let jar_file = fs::File::open(
         "/home/bonk/Programowanie/jetagent-testapp/target/original-jb-hello-world-maven-0.2.0.jar",
     )
@@ -155,15 +156,15 @@ fn main() {
     }
 
     let stream = TcpStream::connect("127.0.0.1:47239");
-    let mut client = JdwpClient::from(stream.unwrap());
-    match client.do_handshake() {
+    let mut client = JdwpClient::from(stream.await.unwrap());
+    match client.do_handshake().await {
         Ok(_) => println!("Success"),
         Err(e) => panic!("Handshake failed: {:?}", e),
     }
 
-    let id_sizes = client.vm_get_id_sizes();
+    let id_sizes = client.vm_get_id_sizes().await;
     println!("{:?}", id_sizes);
 
-    let version = client.vm_get_version();
+    let version = client.vm_get_version().await;
     println!("Version: {:?}", version);
 }
