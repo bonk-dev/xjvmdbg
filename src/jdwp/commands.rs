@@ -54,22 +54,22 @@ impl ReplyPacketHeader {
 #[brw(big)]
 #[derive(Debug)]
 pub struct VersionReply {
-    description: JdwpString,
-    jdwp_major: i32,
-    jdwp_minor: i32,
-    vm_version: JdwpString,
-    vm_name: JdwpString,
+    pub description: JdwpString,
+    pub jdwp_major: i32,
+    pub jdwp_minor: i32,
+    pub vm_version: JdwpString,
+    pub vm_name: JdwpString,
 }
 
 #[binrw]
 #[brw(big)]
 #[derive(Debug)]
 pub struct IdSizesReply {
-    field_id_size: i32,
-    method_id_size: i32,
-    object_id_size: i32,
-    reference_type_id_size: i32,
-    frame_id_size: i32,
+    pub field_id_size: i32,
+    pub method_id_size: i32,
+    pub object_id_size: i32,
+    pub reference_type_id_size: i32,
+    pub frame_id_size: i32,
 }
 
 #[cfg(test)]
