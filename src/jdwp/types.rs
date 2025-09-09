@@ -1,5 +1,15 @@
 use binrw::{BinRead, BinWrite};
 
+pub type JdwpIdSize = u8;
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct JdwpIdSizes {
+    pub field_id_size: JdwpIdSize,
+    pub method_id_size: JdwpIdSize,
+    pub object_id_size: JdwpIdSize,
+    pub reference_type_id_size: JdwpIdSize,
+    pub frame_id_size: JdwpIdSize,
+}
+
 #[derive(Debug)]
 pub struct JdwpString {
     pub string: String,

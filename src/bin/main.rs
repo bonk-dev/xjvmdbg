@@ -156,9 +156,10 @@ async fn main() {
     }
 
     let stream = TcpStream::connect("127.0.0.1:47239").await.unwrap();
-    let client = JdwpClient::new(stream).await.unwrap();
+    let mut client = JdwpClient::new(stream).await.unwrap();
     let version = client.vm_get_version().await.unwrap();
     let id_sizes = client.vm_get_id_sizes().await.unwrap();
+    client.get_id_sizes().await.unwrap();
 
     println!("Version: {:?}", version);
     println!("ID sizes: {:?}", id_sizes);

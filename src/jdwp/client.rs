@@ -10,7 +10,8 @@ use tokio::sync::{Mutex, oneshot};
 use tokio::time::timeout;
 
 use crate::jdwp::{
-    Command, CommandPacketHeader, IdSizesReply, ReplyPacketHeader, VersionReply, result,
+    AllClassesReply, Command, CommandPacketHeader, IdSizesReply, JdwpIdSizes, ReplyPacketHeader,
+    VersionReply, result,
 };
 
 pub struct JdwpClient<T> {
@@ -175,7 +176,7 @@ where
         }
     }
 
-    async fn send_bodyless<TReply: BinRead + ReadEndian>(
+    async fn send_bodyless<TReply: for<'a> BinRead<Args<'a> = ()>>(
         &self,
         cmd: Command,
         timeout_duration: Duration,
@@ -188,7 +189,28 @@ where
             .await?;
 
         let mut cursor = Cursor::new(&reply_packet.data);
-        let reply = TReply::read(&mut cursor).map_err(|e| result::Error::ParsingError {
+        let reply = TReply::read_be(&mut cursor).map_err(|e| result::Error::ParsingError {
+            message: format!("Binary parsing error: {:?}", e),
+        })?;
+
+        Ok(reply)
+    }
+
+    async fn send_bodyless_variable<TReply: for<'a> BinRead<Args<'a> = JdwpIdSizes>>(
+        &self,
+        cmd: Command,
+        timeout_duration: Duration,
+    ) -> result::Result<TReply> {
+        let reply_packet = self
+            .send_request_with_timeout(cmd, Vec::new(), timeout_duration)
+            .await?;
+
+        let mut cursor = Cursor::new(&reply_packet.data);
+        let reply = TReply::read_be_args(
+            &mut cursor,
+            self.sizes.ok_or(result::Error::IdSizesUnknown)?,
+        )
+        .map_err(|e| result::Error::ParsingError {
             message: format!("Binary parsing error: {:?}", e),
         })?;
 
@@ -228,5 +250,36 @@ where
     pub async fn vm_get_id_sizes(&self) -> result::Result<IdSizesReply> {
         self.send_bodyless(Command::VirtualMachineIDSizes, Duration::from_secs(5))
             .await
+    }
+    pub async fn get_id_sizes(&mut self) -> result::Result<()> {
+        let sizes = self.vm_get_id_sizes().await?;
+        let field_id: u8 = sizes
+            .field_id_size
+            .try_into()
+            .map_err(|_| result::Error::IdSizesTruncated)?;
+        let method_id: u8 = sizes
+            .method_id_size
+            .try_into()
+            .map_err(|_| result::Error::IdSizesTruncated)?;
+        let object_id: u8 = sizes
+            .object_id_size
+            .try_into()
+            .map_err(|_| result::Error::IdSizesTruncated)?;
+        let ref_id: u8 = sizes
+            .reference_type_id_size
+            .try_into()
+            .map_err(|_| result::Error::IdSizesTruncated)?;
+        let frame_id: u8 = sizes
+            .frame_id_size
+            .try_into()
+            .map_err(|_| result::Error::IdSizesTruncated)?;
+        self.sizes = Some(JdwpIdSizes {
+            field_id_size: field_id,
+            method_id_size: method_id,
+            object_id_size: object_id,
+            reference_type_id_size: ref_id,
+            frame_id_size: frame_id,
+        });
+        Ok(())
     }
 }

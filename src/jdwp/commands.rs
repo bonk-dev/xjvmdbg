@@ -50,6 +50,36 @@ impl ReplyPacketHeader {
     }
 }
 
+#[derive(Debug)]
+pub struct VariableLengthId {
+    pub value: u64,
+}
+impl BinRead for VariableLengthId {
+    type Args<'a> = JdwpIdSize;
+
+    fn read_options<R: std::io::Read + std::io::Seek>(
+        reader: &mut R,
+        endian: binrw::Endian,
+        args: Self::Args<'_>,
+    ) -> binrw::BinResult<Self> {
+        // TODO: Support non-power-of-2 sizes if needed
+        let val: u64 = match args {
+            1 => u8::read_options(reader, endian, ())? as u64,
+            2 => u16::read_options(reader, endian, ())? as u64,
+            4 => u32::read_options(reader, endian, ())? as u64,
+            8 => u64::read_options(reader, endian, ())?,
+            _ => {
+                return binrw::BinResult::Err(binrw::Error::Custom {
+                    pos: reader.stream_position().unwrap_or(0),
+                    err: Box::new("Unsupported variable size ID"),
+                });
+            }
+        };
+
+        Ok(VariableLengthId { value: val })
+    }
+}
+
 #[binrw]
 #[brw(big)]
 #[derive(Debug)]
