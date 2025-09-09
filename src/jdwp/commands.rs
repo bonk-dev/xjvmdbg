@@ -1,13 +1,17 @@
-use binrw::binrw;
+use binrw::{BinRead, binrw};
 
-use crate::{binrw_enum, jdwp::JdwpString};
+use crate::{
+    binrw_enum,
+    jdwp::{ClassStatus, JdwpIdSize, JdwpIdSizes, JdwpString, TypeTag},
+};
 
 binrw_enum! {
     #[repr(u16)]
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub enum Command {
-        VirtualMachineVersion = (1 << 8) | 1,
-        VirtualMachineIDSizes = (1 << 8) | 7,
+        VirtualMachineVersion =     (1 << 8) | 1,
+        VirtualMachineAllClasses =  (1 << 8) | 3,
+        VirtualMachineIDSizes =     (1 << 8) | 7,
     }
 }
 
@@ -100,6 +104,52 @@ pub struct IdSizesReply {
     pub object_id_size: i32,
     pub reference_type_id_size: i32,
     pub frame_id_size: i32,
+}
+
+#[derive(Debug)]
+pub struct AllClassesReplyClass {
+    pub ref_type_tag: TypeTag,
+    pub type_id: VariableLengthId,
+    pub signature: JdwpString,
+    pub status: ClassStatus,
+}
+impl BinRead for AllClassesReplyClass {
+    type Args<'a> = JdwpIdSizes;
+
+    fn read_options<R: std::io::Read + std::io::Seek>(
+        reader: &mut R,
+        endian: binrw::Endian,
+        args: Self::Args<'_>,
+    ) -> binrw::BinResult<Self> {
+        Ok(AllClassesReplyClass {
+            ref_type_tag: TypeTag::read_options(reader, endian, ())?,
+            type_id: VariableLengthId::read_options(reader, endian, args.reference_type_id_size)?,
+            signature: JdwpString::read_options(reader, endian, ())?,
+            status: ClassStatus::read_options(reader, endian, ())?,
+        })
+    }
+}
+
+#[derive(Debug)]
+pub struct AllClassesReply {
+    pub classes: Vec<AllClassesReplyClass>,
+}
+impl BinRead for AllClassesReply {
+    type Args<'a> = JdwpIdSizes;
+
+    fn read_options<R: std::io::Read + std::io::Seek>(
+        reader: &mut R,
+        endian: binrw::Endian,
+        args: Self::Args<'_>,
+    ) -> binrw::BinResult<Self> {
+        let classes_length = i32::read_options(reader, endian, ())?;
+        let mut classes = Vec::with_capacity(classes_length as usize);
+        for _ in 0..classes_length {
+            classes.push(AllClassesReplyClass::read_options(reader, endian, args)?);
+        }
+
+        Ok(AllClassesReply { classes })
+    }
 }
 
 #[cfg(test)]

@@ -163,4 +163,10 @@ async fn main() {
 
     println!("Version: {:?}", version);
     println!("ID sizes: {:?}", id_sizes);
+
+    let classes = client.vm_get_all_classes().await.unwrap();
+    println!("Loaded classes: ");
+    for c in classes.classes {
+        println!("{:?}", c);
+    }
 }

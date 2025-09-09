@@ -19,6 +19,7 @@ pub struct JdwpClient<T> {
     pending_requests: Arc<Mutex<HashMap<u32, oneshot::Sender<ReplyPacket>>>>,
     packet_id: Arc<Mutex<u32>>,
     _reader_handle: tokio::task::JoinHandle<()>,
+    sizes: Option<JdwpIdSizes>,
 }
 
 struct ReplyPacket {
@@ -50,6 +51,7 @@ where
             pending_requests,
             packet_id,
             _reader_handle: reader_handle,
+            sizes: None,
         })
     }
 
@@ -244,6 +246,11 @@ where
 
     pub async fn vm_get_version(&self) -> result::Result<VersionReply> {
         self.send_bodyless(Command::VirtualMachineVersion, Duration::from_secs(5))
+            .await
+    }
+
+    pub async fn vm_get_all_classes(&self) -> result::Result<AllClassesReply> {
+        self.send_bodyless_variable(Command::VirtualMachineAllClasses, Duration::from_secs(5))
             .await
     }
 
